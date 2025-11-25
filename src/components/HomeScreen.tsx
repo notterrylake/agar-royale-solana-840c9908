@@ -11,7 +11,7 @@ import { supabase } from '@/integrations/supabase/client';
 import skinDoge from '@/assets/skin-doge.png';
 import skinShiba from '@/assets/skin-shiba.png';
 import skinAvatar from '@/assets/skin-avatar.webp';
-import skinPepe from '@/assets/skin-pepe.png';
+import skinSolana from '@/assets/skin-solana.png';
 
 interface HomeScreenProps {
   onStartGame: (
@@ -157,7 +157,7 @@ export const HomeScreen = ({ onStartGame }: HomeScreenProps) => {
     { id: 0, name: 'Doge', image: skinDoge },
     { id: 1, name: 'Shiba Inu', image: skinShiba },
     { id: 2, name: 'Avatar', image: skinAvatar },
-    { id: 3, name: 'Pepe', image: skinPepe },
+    { id: 3, name: 'Solana', image: skinSolana },
   ];
 
   return (
