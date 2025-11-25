@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { Connection, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import confetti from 'canvas-confetti';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Copy, Check, Zap } from 'lucide-react';
@@ -117,9 +117,6 @@ export const SpinningWheel = ({ walletPublicKey }: SpinningWheelProps) => {
           return;
         }
 
-        // Create Solana connection (mainnet-beta for production, devnet for testing)
-        const connection = new Connection('https://api.mainnet-beta.solana.com', 'confirmed');
-
         // Treasury wallet address (replace with your actual wallet)
         const treasuryPublicKey = new PublicKey('11111111111111111111111111111111');
 
@@ -132,15 +129,55 @@ export const SpinningWheel = ({ walletPublicKey }: SpinningWheelProps) => {
           })
         );
 
-        // Get recent blockhash
-        const { blockhash } = await connection.getLatestBlockhash();
-        transaction.recentBlockhash = blockhash;
+        // Get recent blockhash via edge function
+        const { data: blockhashData, error: blockhashError } = await supabase.functions.invoke('solana-rpc', {
+          body: {
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'getLatestBlockhash',
+            params: []
+          }
+        });
+
+        if (blockhashError || !blockhashData?.result?.value?.blockhash) {
+          throw new Error('Failed to get blockhash');
+        }
+
+        transaction.recentBlockhash = blockhashData.result.value.blockhash;
         transaction.feePayer = walletPublicKey!;
 
-        // Sign and send transaction
+        // Sign transaction
         const signed = await provider.signTransaction(transaction);
-        transactionSignature = await connection.sendRawTransaction(signed.serialize());
-        await connection.confirmTransaction(transactionSignature);
+        
+        // Send raw transaction via edge function
+        const { data: sendData, error: sendError } = await supabase.functions.invoke('solana-rpc', {
+          body: {
+            jsonrpc: '2.0',
+            id: 2,
+            method: 'sendRawTransaction',
+            params: [Array.from(signed.serialize())]
+          }
+        });
+
+        if (sendError || !sendData?.result) {
+          throw new Error('Failed to send transaction');
+        }
+
+        transactionSignature = sendData.result;
+
+        // Confirm transaction via edge function
+        const { error: confirmError } = await supabase.functions.invoke('solana-rpc', {
+          body: {
+            jsonrpc: '2.0',
+            id: 3,
+            method: 'confirmTransaction',
+            params: [transactionSignature]
+          }
+        });
+
+        if (confirmError) {
+          throw new Error('Failed to confirm transaction');
+        }
 
         toast.success('Payment successful! Spinning...');
       } else {
