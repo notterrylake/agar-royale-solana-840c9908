@@ -5,7 +5,7 @@ import { Card } from '@/components/ui/card';
 import { PhantomWallet } from '@/components/PhantomWallet';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
-import { Sparkles, Wallet } from 'lucide-react';
+import { Sparkles, Wallet, HelpCircle } from 'lucide-react';
 import { PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { supabase } from '@/integrations/supabase/client';
 import skinDoge from '@/assets/skin-doge.png';
@@ -162,7 +162,7 @@ export const HomeScreen = ({ onStartGame }: HomeScreenProps) => {
 
   return (
     <div className="fixed inset-0 flex items-center justify-center bg-background">
-      <div className="absolute top-6 left-6">
+      <div className="absolute top-6 left-6 flex gap-2">
         <Button
           onClick={() => navigate('/spin-wheel')}
           variant="ghost"
@@ -171,6 +171,15 @@ export const HomeScreen = ({ onStartGame }: HomeScreenProps) => {
         >
           <Sparkles className="h-4 w-4" />
           Lucky Wheel
+        </Button>
+        <Button
+          onClick={() => navigate('/how-to-play')}
+          variant="ghost"
+          size="sm"
+          className="gap-2 text-foreground/60 hover:text-foreground hover:bg-white/5 transition-all"
+        >
+          <HelpCircle className="h-4 w-4" />
+          How to Play
         </Button>
       </div>
 
@@ -181,11 +190,11 @@ export const HomeScreen = ({ onStartGame }: HomeScreenProps) => {
       <div className="w-full max-w-lg space-y-12 px-6">
         <div className="text-center space-y-3">
           <h1 className="text-8xl font-extrabold text-foreground tracking-tighter animate-fade-in" style={{ letterSpacing: '-0.05em' }}>
-            AGAR.IO
+            SOLIUM
           </h1>
           <div className="h-px w-32 mx-auto bg-gradient-to-r from-transparent via-white/20 to-transparent" />
           <p className="text-sm text-muted-foreground font-medium uppercase tracking-[0.2em]">
-            PvP Cell Battle Arena
+            Solana PvP Battle Arena
           </p>
           {!testMode && (
             <div className="inline-block px-4 py-2 rounded-full bg-primary/20 border border-primary/50">
