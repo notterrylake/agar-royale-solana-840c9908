@@ -110,6 +110,7 @@ export type Database = {
       players: {
         Row: {
           bet_transaction_signature: string | null
+          cell_radius: number | null
           created_at: string | null
           has_paid: boolean | null
           id: string
@@ -128,6 +129,7 @@ export type Database = {
         }
         Insert: {
           bet_transaction_signature?: string | null
+          cell_radius?: number | null
           created_at?: string | null
           has_paid?: boolean | null
           id?: string
@@ -146,6 +148,7 @@ export type Database = {
         }
         Update: {
           bet_transaction_signature?: string | null
+          cell_radius?: number | null
           created_at?: string | null
           has_paid?: boolean | null
           id?: string

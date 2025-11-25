@@ -22,6 +22,16 @@ interface Cell {
   splitTime: number; // timestamp when this cell was created from a split
 }
 
+interface EnemyPlayer {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  radius: number;
+  skinId: number;
+  isAlive: boolean;
+}
+
 interface Food {
   x: number;
   y: number;
@@ -56,6 +66,8 @@ const MAX_PLAYER_CELLS = 16;
 const WIN_CONDITION = 100;
 const MERGE_COOLDOWN = 15000; // 15 seconds before cells can merge (in milliseconds)
 const MERGE_DISTANCE = 0.8; // cells start merging when within 80% of combined radii
+const SIZE_ADVANTAGE = 1.15; // Must be 15% larger to absorb another player
+const POSITION_BROADCAST_INTERVAL = 100; // Broadcast position every 100ms
 
 export const GameCanvas = ({ sessionId, playerId, sessionCode, onPlayAgain, selectedSkin }: GameCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -74,6 +86,8 @@ export const GameCanvas = ({ sessionId, playerId, sessionCode, onPlayAgain, sele
   const cellIdCounter = useRef(0);
   const foodEaten = useRef(0);
   const animationFrameId = useRef<number | null>(null);
+  const enemyCells = useRef<EnemyPlayer[]>([]);
+  const lastBroadcastTime = useRef(0);
 
   useEffect(() => {
     const fetchPlayers = async () => {
@@ -103,8 +117,42 @@ export const GameCanvas = ({ sessionId, playerId, sessionCode, onPlayAgain, sele
           
           if (payload.eventType === 'UPDATE' && payload.new) {
             const player = payload.new as any;
+            
+            // Update enemy position if it's not the current player
+            if (player.id !== playerId && player.position_x && player.position_y) {
+              const enemyIndex = enemyCells.current.findIndex(e => e.id === player.id);
+              if (enemyIndex >= 0) {
+                enemyCells.current[enemyIndex] = {
+                  id: player.id,
+                  name: player.player_name,
+                  x: player.position_x,
+                  y: player.position_y,
+                  radius: player.cell_radius || 20,
+                  skinId: player.skin_id || 1,
+                  isAlive: player.is_alive
+                };
+              } else {
+                enemyCells.current.push({
+                  id: player.id,
+                  name: player.player_name,
+                  x: player.position_x,
+                  y: player.position_y,
+                  radius: player.cell_radius || 20,
+                  skinId: player.skin_id || 1,
+                  isAlive: player.is_alive
+                });
+              }
+            }
+            
+            // Check win condition by score
             if (player.score >= WIN_CONDITION && !gameEnded) {
               handleGameWin(player);
+            }
+            
+            // Check last player standing win condition
+            const alivePlayers = players.filter(p => p.is_alive);
+            if (alivePlayers.length === 1 && !gameEnded) {
+              handleGameWin(alivePlayers[0]);
             }
           }
         }
@@ -343,6 +391,41 @@ export const GameCanvas = ({ sessionId, playerId, sessionCode, onPlayAgain, sele
         return;
       }
 
+      // PvP collision detection
+      playerCells.current.forEach(myCell => {
+        enemyCells.current.forEach(enemy => {
+          if (!enemy.isAlive) return;
+          
+          const dist = Math.hypot(myCell.x - enemy.x, myCell.y - enemy.y);
+          
+          // Check if cells overlap
+          if (dist < myCell.radius + enemy.radius) {
+            // My cell is larger - I eat them
+            if (myCell.radius > enemy.radius * SIZE_ADVANTAGE) {
+              myCell.radius = Math.sqrt(myCell.radius ** 2 + enemy.radius ** 2);
+              toast.success(`Ate ${enemy.name}!`);
+              
+              // Notify server that enemy was eaten
+              supabase
+                .from('players')
+                .update({ is_alive: false })
+                .eq('id', enemy.id)
+                .then(() => {
+                  enemy.isAlive = false;
+                });
+            }
+            // Enemy is larger - they eat me
+            else if (enemy.radius > myCell.radius * SIZE_ADVANTAGE) {
+              myCell.radius = 0; // Mark for removal
+              toast.error(`Eaten by ${enemy.name}!`);
+            }
+          }
+        });
+      });
+
+      // Remove eaten cells
+      playerCells.current = playerCells.current.filter(c => c.radius > 0);
+
       let foodEatenThisFrame = 0;
       playerCells.current.forEach(cell => {
         foods.current = foods.current.filter(food => {
@@ -478,6 +561,28 @@ export const GameCanvas = ({ sessionId, playerId, sessionCode, onPlayAgain, sele
       checkCollisions();
       mergeCells();
 
+      // Broadcast player position periodically
+      const now = Date.now();
+      if (now - lastBroadcastTime.current > POSITION_BROADCAST_INTERVAL && playerCells.current.length > 0) {
+        lastBroadcastTime.current = now;
+        
+        // Calculate combined mass center and radius
+        const totalMass = playerCells.current.reduce((sum, c) => sum + c.radius ** 2, 0);
+        const avgX = playerCells.current.reduce((sum, c) => sum + c.x * c.radius ** 2, 0) / totalMass;
+        const avgY = playerCells.current.reduce((sum, c) => sum + c.y * c.radius ** 2, 0) / totalMass;
+        const combinedRadius = Math.sqrt(totalMass);
+        
+        supabase
+          .from('players')
+          .update({
+            position_x: avgX,
+            position_y: avgY,
+            cell_radius: combinedRadius
+          })
+          .eq('id', playerId)
+          .then(() => {});
+      }
+
       if (playerCells.current.length > 0) {
         const avgX = playerCells.current.reduce((sum, c) => sum + c.x, 0) / playerCells.current.length;
         const avgY = playerCells.current.reduce((sum, c) => sum + c.y, 0) / playerCells.current.length;
@@ -548,6 +653,54 @@ export const GameCanvas = ({ sessionId, playerId, sessionCode, onPlayAgain, sele
           ctx.arc(sx, sy, cactus.radius, 0, Math.PI * 2);
           ctx.stroke();
         }
+      });
+
+      // Render enemy players
+      enemyCells.current.forEach(enemy => {
+        if (!enemy.isAlive) return;
+        
+        const sx = toScreenX(enemy.x);
+        const sy = toScreenY(enemy.y);
+        
+        // Only render if on screen
+        if (sx < -enemy.radius || sx > canvas.width + enemy.radius || 
+            sy < -enemy.radius || sy > canvas.height + enemy.radius) {
+          return;
+        }
+        
+        // Draw enemy with their skin
+        const skinImage = new Image();
+        skinImage.src = SKIN_IMAGES[(enemy.skinId - 1) % SKIN_IMAGES.length];
+        const size = enemy.radius * 2;
+        
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(sx, sy, enemy.radius, 0, Math.PI * 2);
+        ctx.clip();
+        ctx.drawImage(skinImage, sx - enemy.radius, sy - enemy.radius, size, size);
+        ctx.restore();
+        
+        // Draw red outline for enemies
+        ctx.strokeStyle = '#ff4444';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(sx, sy, enemy.radius, 0, Math.PI * 2);
+        ctx.stroke();
+        
+        // Draw enemy name
+        const fontSize = Math.max(12, enemy.radius / 3);
+        ctx.font = `bold ${fontSize}px Arial`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        
+        // Draw black outline
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 4;
+        ctx.strokeText(enemy.name, sx, sy);
+        
+        // Draw red text for enemies
+        ctx.fillStyle = '#ff4444';
+        ctx.fillText(enemy.name, sx, sy);
       });
 
       playerCells.current.forEach(cell => {
