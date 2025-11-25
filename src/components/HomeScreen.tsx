@@ -6,7 +6,8 @@ import { PhantomWallet } from '@/components/PhantomWallet';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { Sparkles, Wallet } from 'lucide-react';
-import { PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL, Connection, Keypair } from '@solana/web3.js';
+import { PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { supabase } from '@/integrations/supabase/client';
 import skinDoge from '@/assets/skin-doge.png';
 import skinShiba from '@/assets/skin-shiba.png';
 import skinAvatar from '@/assets/skin-avatar.webp';
@@ -81,9 +82,6 @@ export const HomeScreen = ({ onStartGame }: HomeScreenProps) => {
         return;
       }
 
-      // Connect to Solana mainnet
-      const connection = new Connection('https://api.mainnet-beta.solana.com', 'confirmed');
-
       // Create transaction
       const transaction = new Transaction().add(
         SystemProgram.transfer({
@@ -93,9 +91,21 @@ export const HomeScreen = ({ onStartGame }: HomeScreenProps) => {
         })
       );
 
-      // Get recent blockhash
-      const { blockhash } = await connection.getLatestBlockhash();
-      transaction.recentBlockhash = blockhash;
+      // Get recent blockhash via edge function
+      const { data: blockhashData, error: blockhashError } = await supabase.functions.invoke('solana-rpc', {
+        body: {
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'getLatestBlockhash',
+          params: []
+        }
+      });
+
+      if (blockhashError || !blockhashData?.result?.value?.blockhash) {
+        throw new Error('Failed to get blockhash');
+      }
+
+      transaction.recentBlockhash = blockhashData.result.value.blockhash;
       transaction.feePayer = walletPublicKey;
 
       toast.info('Confirm transaction in Phantom wallet...');
@@ -106,8 +116,19 @@ export const HomeScreen = ({ onStartGame }: HomeScreenProps) => {
 
       toast.info('Transaction sent, waiting for confirmation...');
 
-      // Wait for confirmation
-      await connection.confirmTransaction(signature);
+      // Wait for confirmation via edge function
+      const { error: confirmError } = await supabase.functions.invoke('solana-rpc', {
+        body: {
+          jsonrpc: '2.0',
+          id: 2,
+          method: 'confirmTransaction',
+          params: [signature]
+        }
+      });
+
+      if (confirmError) {
+        throw new Error('Failed to confirm transaction');
+      }
 
       toast.success('Payment confirmed!');
 
