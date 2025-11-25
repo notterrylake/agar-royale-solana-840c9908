@@ -15,6 +15,7 @@ const Index = () => {
   const [sessionCode, setSessionCode] = useState<string>('');
   const [selectedSkin, setSelectedSkin] = useState<number>(0);
   const [matchmakingQueueId, setMatchmakingQueueId] = useState<string>('');
+  const [matchmakingPlayerName, setMatchmakingPlayerName] = useState<string>('');
 
   const generateSessionCode = () => {
     return Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -25,30 +26,10 @@ const Index = () => {
     walletAddress: string,
     transactionSignature: string,
     joinCode?: string, 
-    skinId: number = 0
+    skinId: number = 0,
+    isQuickPlay: boolean = false
   ) => {
     setSelectedSkin(skinId);
-    
-    // Check if player has recently played
-    const recentPlayerId = localStorage.getItem('recent_player_id');
-    if (recentPlayerId) {
-      const { data: playerData } = await supabase
-        .from('players')
-        .select('last_game_ended_at')
-        .eq('id', recentPlayerId)
-        .single();
-
-      if (playerData?.last_game_ended_at) {
-        const cooldownEnd = new Date(playerData.last_game_ended_at).getTime() + 5000;
-        const now = Date.now();
-        
-        if (now < cooldownEnd) {
-          const secondsLeft = Math.ceil((cooldownEnd - now) / 1000);
-          toast.error(`Please wait ${secondsLeft} seconds before starting a new game`);
-          return;
-        }
-      }
-    }
 
     try {
       // Skip payment verification in test mode (when signature starts with "test_")
@@ -79,124 +60,56 @@ const Index = () => {
         toast.success('Test mode - Payment skipped');
       }
 
-      let currentSessionId: string;
-      let currentSessionCode: string;
-
-      if (joinCode) {
-        // Join existing session - ANTI-CHEAT: Check for duplicate wallet
-        const { data: existingPlayer } = await supabase
-          .from('players')
-          .select('id')
-          .eq('wallet_address', walletAddress)
-          .eq('session_id', joinCode)
-          .maybeSingle();
-
-        if (existingPlayer) {
-          toast.error('This wallet is already in this game');
-          return;
+      // Call the edge function to create or join game
+      toast.info(isQuickPlay ? 'Finding match...' : 'Creating game...');
+      
+      const { data, error } = await supabase.functions.invoke('create-or-join-game', {
+        body: {
+          playerName,
+          walletAddress,
+          transactionSignature,
+          skinId,
+          sessionCode: joinCode,
+          isQuickPlay
         }
-        // Join existing session
-        const { data: sessionData, error: sessionError } = await supabase
-          .from('game_sessions')
-          .select('id, status, pot_amount')
-          .eq('session_code', joinCode.toUpperCase())
-          .single();
+      });
 
-        if (sessionError || !sessionData) {
-          toast.error('Game session not found');
-          return;
-        }
-
-        if (sessionData.status !== 'waiting') {
-          toast.error('This game has already started');
-          return;
-        }
-
-        // Update pot amount
-        await supabase
-          .from('game_sessions')
-          .update({ pot_amount: (sessionData.pot_amount || 0) + 0.05 })
-          .eq('id', sessionData.id);
-
-        currentSessionId = sessionData.id;
-        currentSessionCode = joinCode.toUpperCase();
-      } else {
-        // Create new session
-        currentSessionCode = generateSessionCode();
-        const { data: sessionData, error: sessionError } = await supabase
-          .from('game_sessions')
-          .insert({
-            session_code: currentSessionCode,
-            status: 'waiting',
-            max_players: 3,
-            win_condition_food: 100,
-            bet_amount: 0.05,
-            pot_amount: 0.05,
-            lobby_start_time: new Date().toISOString(),
-          })
-          .select()
-          .single();
-
-        if (sessionError || !sessionData) {
-          toast.error('Failed to create game session');
-          return;
-        }
-
-        currentSessionId = sessionData.id;
+      if (error) {
+        console.error('Edge function error:', error);
+        toast.error('Failed to start game');
+        return;
       }
 
-      // Create player - ANTI-CHEAT: Database will prevent duplicate wallets/signatures
-      const { data: playerData, error: playerError } = await supabase
-        .from('players')
-        .insert({
-          session_id: currentSessionId,
-          player_name: playerName,
-          wallet_address: walletAddress,
-          bet_transaction_signature: transactionSignature,
-          has_paid: true,
-          skin_id: skinId,
-          position_x: Math.random() * 800,
-          position_y: Math.random() * 600,
-          score: 0,
-          is_alive: true,
-        })
-        .select()
-        .single();
+      if (data.error) {
+        toast.error(data.error);
+        return;
+      }
 
-      if (playerError) {
-        // Check for duplicate wallet or transaction
-        if (playerError.code === '23505') {
-          if (playerError.message.includes('unique_wallet_per_session')) {
-            toast.error('This wallet is already in this game');
-          } else if (playerError.message.includes('unique_transaction_signature')) {
-            toast.error('This transaction has already been used');
-          } else {
-            toast.error('Failed to join game - duplicate entry');
-          }
+      // Handle quick play - go to matchmaking
+      if (data.mode === 'matchmaking') {
+        setMatchmakingQueueId(data.queueId);
+        setMatchmakingPlayerName(playerName);
+        setGameState('matchmaking');
+        toast.success('Searching for match...');
+        return;
+      }
+
+      // Handle lobby creation/join
+      if (data.mode === 'lobby') {
+        localStorage.setItem('recent_player_id', data.playerId);
+        setSessionId(data.sessionId);
+        setSessionCode(data.sessionCode);
+        setPlayerId(data.playerId);
+
+        if (!joinCode) {
+          toast.success(`Lobby created! Share code: ${data.sessionCode}`);
         } else {
-          toast.error('Failed to join game');
+          toast.success('Joined lobby successfully!');
         }
-        console.error('Player creation error:', playerError);
-        return;
+
+        setGameState('lobby');
       }
 
-      if (!playerData) {
-        toast.error('Failed to join game');
-        return;
-      }
-
-      localStorage.setItem('recent_player_id', playerData.id);
-      setSessionId(currentSessionId);
-      setSessionCode(currentSessionCode);
-      setPlayerId(playerData.id);
-
-      if (!joinCode) {
-        toast.success(`Lobby created! Share code: ${currentSessionCode}`);
-      } else {
-        toast.success('Joined lobby successfully!');
-      }
-
-      setGameState('lobby');
     } catch (error) {
       console.error('Error starting game:', error);
       toast.error('Failed to start game');
@@ -209,6 +122,7 @@ const Index = () => {
     setSessionCode('');
     setPlayerId('');
     setMatchmakingQueueId('');
+    setMatchmakingPlayerName('');
   };
 
   const handleLeaveLobby = () => {
@@ -217,6 +131,7 @@ const Index = () => {
     setSessionCode('');
     setPlayerId('');
     setMatchmakingQueueId('');
+    setMatchmakingPlayerName('');
   };
 
   const handleGameStart = () => {
@@ -235,6 +150,7 @@ const Index = () => {
   const handleCancelMatchmaking = () => {
     setGameState('home');
     setMatchmakingQueueId('');
+    setMatchmakingPlayerName('');
   };
 
   return (
@@ -245,7 +161,7 @@ const Index = () => {
       {gameState === 'matchmaking' && (
         <MatchmakingScreen
           queueId={matchmakingQueueId}
-          playerName=""
+          playerName={matchmakingPlayerName}
           onMatchFound={handleMatchFound}
           onCancel={handleCancelMatchmaking}
         />
