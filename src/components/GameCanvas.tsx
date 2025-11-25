@@ -70,6 +70,7 @@ export const GameCanvas = ({ sessionId, playerId, sessionCode, onPlayAgain, sele
   const cameraPos = useRef({ x: WORLD_SIZE / 2, y: WORLD_SIZE / 2 });
   const cellIdCounter = useRef(0);
   const foodEaten = useRef(0);
+  const animationFrameId = useRef<number | null>(null);
 
   useEffect(() => {
     const fetchPlayers = async () => {
@@ -380,9 +381,9 @@ export const GameCanvas = ({ sessionId, playerId, sessionCode, onPlayAgain, sele
         const dist = Math.hypot(dx, dy);
         
         if (dist > 10) {
-          const baseSpeed = 2.5;
-          const speedBonus = Math.min(3, foodEaten.current * 0.02);
-          const speed = baseSpeed + speedBonus;
+          // Inverted speed: start fast (3.6) and slow down as radius grows (min 1.0)
+          // This mimics Agar.io physics where bigger cells are slower
+          const speed = Math.max(1.0, 3.6 - (cell.radius - 20) * 0.05);
           const targetVx = (dx / dist) * speed;
           const targetVy = (dy / dist) * speed;
           
@@ -532,7 +533,7 @@ export const GameCanvas = ({ sessionId, playerId, sessionCode, onPlayAgain, sele
         }
       });
 
-      requestAnimationFrame(gameLoop);
+      animationFrameId.current = requestAnimationFrame(gameLoop);
     };
 
     gameLoop();
@@ -540,6 +541,9 @@ export const GameCanvas = ({ sessionId, playerId, sessionCode, onPlayAgain, sele
     return () => {
       canvas.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('keydown', handleKeyPress);
+      if (animationFrameId.current !== null) {
+        cancelAnimationFrame(animationFrameId.current);
+      }
     };
   }, [gameStarted, score, players, playerId, gameEnded]);
 
