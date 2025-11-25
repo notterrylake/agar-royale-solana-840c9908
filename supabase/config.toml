@@ -1,1 +1,16 @@
 project_id = "jsuctodxxplqjaoxioyn"
+
+[functions.create-or-join-game]
+verify_jwt = false
+
+[functions.verify-solana-payment]
+verify_jwt = false
+
+[functions.process-winner-payout]
+verify_jwt = false
+
+[functions.process-refund]
+verify_jwt = false
+
+[functions.matchmaking-service]
+verify_jwt = false
