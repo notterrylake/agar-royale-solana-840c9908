@@ -161,8 +161,8 @@ export const HomeScreen = ({ onStartGame }: HomeScreenProps) => {
   ];
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center bg-background">
-      <div className="absolute top-6 left-6 flex gap-2">
+    <div className="min-h-screen w-full flex items-center justify-center bg-background overflow-y-auto py-6">
+      <div className="fixed top-6 left-6 flex gap-2 z-50">
         <Button
           onClick={() => navigate('/spin-wheel')}
           variant="ghost"
@@ -183,7 +183,7 @@ export const HomeScreen = ({ onStartGame }: HomeScreenProps) => {
         </Button>
       </div>
 
-      <div className="absolute top-6 right-6">
+      <div className="fixed top-6 right-6 z-50">
         <PhantomWallet onWalletChange={setWalletPublicKey} />
       </div>
 

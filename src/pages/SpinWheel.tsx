@@ -11,8 +11,8 @@ export default function SpinWheel() {
   const navigate = useNavigate();
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center bg-background">
-      <div className="absolute top-6 left-6">
+    <div className="min-h-screen w-full flex items-center justify-center bg-background overflow-y-auto py-6">
+      <div className="fixed top-6 left-6 z-50">
         <Button
           onClick={() => navigate('/')}
           variant="ghost"
@@ -24,7 +24,7 @@ export default function SpinWheel() {
         </Button>
       </div>
 
-      <div className="absolute top-6 right-6">
+      <div className="fixed top-6 right-6 z-50">
         <PhantomWallet onWalletChange={setWalletPublicKey} />
       </div>
 
