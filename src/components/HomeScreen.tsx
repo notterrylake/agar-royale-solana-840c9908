@@ -81,8 +81,8 @@ export const HomeScreen = ({ onStartGame }: HomeScreenProps) => {
         return;
       }
 
-      // Connect to Solana devnet
-      const connection = new Connection('https://api.devnet.solana.com', 'confirmed');
+      // Connect to Solana mainnet
+      const connection = new Connection('https://api.mainnet-beta.solana.com', 'confirmed');
 
       // Create transaction
       const transaction = new Transaction().add(

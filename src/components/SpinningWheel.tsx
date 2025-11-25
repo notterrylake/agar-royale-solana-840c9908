@@ -118,7 +118,7 @@ export const SpinningWheel = ({ walletPublicKey }: SpinningWheelProps) => {
         }
 
         // Create Solana connection (mainnet-beta for production, devnet for testing)
-        const connection = new Connection('https://api.devnet.solana.com', 'confirmed');
+        const connection = new Connection('https://api.mainnet-beta.solana.com', 'confirmed');
 
         // Treasury wallet address (replace with your actual wallet)
         const treasuryPublicKey = new PublicKey('11111111111111111111111111111111');
