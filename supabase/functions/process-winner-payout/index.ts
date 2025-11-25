@@ -87,8 +87,8 @@ serve(async (req) => {
 
     console.log('Treasury wallet:', treasuryKeypair.publicKey.toString());
 
-    // Connect to Solana (use devnet for testing, mainnet for production)
-    const connection = new Connection('https://api.devnet.solana.com', 'confirmed');
+    // Connect to Solana mainnet
+    const connection = new Connection('https://api.mainnet-beta.solana.com', 'confirmed');
 
     // Calculate amounts
     const totalLamports = potAmount * LAMPORTS_PER_SOL;
@@ -171,7 +171,7 @@ serve(async (req) => {
         winnerAmount: winnerLamports / LAMPORTS_PER_SOL,
         teamFee: teamFeeLamports / LAMPORTS_PER_SOL,
         recipient: winnerWallet,
-        explorerUrl: `https://explorer.solana.com/tx/${signature}?cluster=devnet`
+        explorerUrl: `https://explorer.solana.com/tx/${signature}`
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

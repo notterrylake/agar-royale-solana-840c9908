@@ -16,9 +16,9 @@ serve(async (req) => {
     
     console.log('Verifying payment:', { signature, playerWallet, expectedAmount });
 
-    // Connect to Solana (using devnet for testing)
+    // Connect to Solana mainnet
     const connection = new Connection(
-      'https://api.devnet.solana.com',
+      'https://api.mainnet-beta.solana.com',
       'confirmed'
     );
 

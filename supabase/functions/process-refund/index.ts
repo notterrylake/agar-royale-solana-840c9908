@@ -112,8 +112,8 @@ serve(async (req) => {
       const treasuryKeypair = Keypair.fromSecretKey(secretKey);
       console.log('Treasury wallet:', treasuryKeypair.publicKey.toString());
 
-      // Connect to Solana
-      const connection = new Connection('https://api.devnet.solana.com', 'confirmed');
+      // Connect to Solana mainnet
+      const connection = new Connection('https://api.mainnet-beta.solana.com', 'confirmed');
 
       // Create refund transaction
       const transaction = new Transaction().add(
@@ -196,7 +196,7 @@ serve(async (req) => {
         amount: 0.05,
         recipient: player.wallet_address,
         testMode: isTestMode,
-        explorerUrl: isTestMode ? null : `https://explorer.solana.com/tx/${refundSignature}?cluster=devnet`
+        explorerUrl: isTestMode ? null : `https://explorer.solana.com/tx/${refundSignature}`
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
