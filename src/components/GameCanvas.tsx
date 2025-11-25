@@ -19,6 +19,7 @@ interface Cell {
   isPlayer: boolean;
   name?: string;
   id: string;
+  splitTime: number; // timestamp when this cell was created from a split
 }
 
 interface Food {
@@ -53,6 +54,8 @@ const FOOD_COUNT = 500;
 const CACTUS_COUNT = 30;
 const MAX_PLAYER_CELLS = 16;
 const WIN_CONDITION = 100;
+const MERGE_COOLDOWN = 15000; // 15 seconds before cells can merge (in milliseconds)
+const MERGE_DISTANCE = 0.8; // cells start merging when within 80% of combined radii
 
 export const GameCanvas = ({ sessionId, playerId, sessionCode, onPlayAgain, selectedSkin }: GameCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -203,7 +206,8 @@ export const GameCanvas = ({ sessionId, playerId, sessionCode, onPlayAgain, sele
       vy: 0,
       isPlayer: true,
       name: currentPlayer?.player_name || 'You',
-      id: `player-${cellIdCounter.current++}`
+      id: `player-${cellIdCounter.current++}`,
+      splitTime: 0 // initial cell can merge immediately
     }];
 
     foods.current = Array.from({ length: FOOD_COUNT }, () => ({
@@ -283,6 +287,7 @@ export const GameCanvas = ({ sessionId, playerId, sessionCode, onPlayAgain, sele
       }
 
       const newCells: Cell[] = [];
+      const currentTime = Date.now();
       playerCells.current.forEach(cell => {
         if (cell.radius > 20 && newCells.length + playerCells.current.length < MAX_PLAYER_CELLS) {
           const angle = Math.atan2(
@@ -295,7 +300,8 @@ export const GameCanvas = ({ sessionId, playerId, sessionCode, onPlayAgain, sele
           newCells.push({
             ...cell,
             radius: newRadius,
-            id: `player-${cellIdCounter.current++}`
+            id: `player-${cellIdCounter.current++}`,
+            splitTime: currentTime // assign split time to prevent immediate merge
           });
           newCells.push({
             ...cell,
@@ -304,7 +310,8 @@ export const GameCanvas = ({ sessionId, playerId, sessionCode, onPlayAgain, sele
             y: cell.y + Math.sin(angle) * splitDistance,
             vx: Math.cos(angle) * 20,
             vy: Math.sin(angle) * 20,
-            id: `player-${cellIdCounter.current++}`
+            id: `player-${cellIdCounter.current++}`,
+            splitTime: currentTime // assign split time to prevent immediate merge
           });
         } else {
           newCells.push(cell);
@@ -372,6 +379,70 @@ export const GameCanvas = ({ sessionId, playerId, sessionCode, onPlayAgain, sele
       }
     };
 
+    const mergeCells = () => {
+      const currentTime = Date.now();
+      const cellsToRemove = new Set<string>();
+
+      // Check all pairs of cells for merge eligibility
+      for (let i = 0; i < playerCells.current.length; i++) {
+        for (let j = i + 1; j < playerCells.current.length; j++) {
+          const cell1 = playerCells.current[i];
+          const cell2 = playerCells.current[j];
+
+          // Skip if either cell is marked for removal
+          if (cellsToRemove.has(cell1.id) || cellsToRemove.has(cell2.id)) continue;
+
+          // Check if both cells passed merge cooldown
+          const cell1CanMerge = currentTime - cell1.splitTime > MERGE_COOLDOWN;
+          const cell2CanMerge = currentTime - cell2.splitTime > MERGE_COOLDOWN;
+
+          if (cell1CanMerge && cell2CanMerge) {
+            // Calculate distance between cells
+            const dx = cell2.x - cell1.x;
+            const dy = cell2.y - cell1.y;
+            const dist = Math.hypot(dx, dy);
+            const mergeThreshold = (cell1.radius + cell2.radius) * MERGE_DISTANCE;
+
+            // If cells are overlapping enough, start merge animation
+            if (dist < mergeThreshold) {
+              // Smooth animation: move cells toward their center of mass
+              const totalMass = cell1.radius ** 2 + cell2.radius ** 2;
+              const centerX = (cell1.x * cell1.radius ** 2 + cell2.x * cell2.radius ** 2) / totalMass;
+              const centerY = (cell1.y * cell1.radius ** 2 + cell2.y * cell2.radius ** 2) / totalMass;
+
+              // Lerp cells toward center of mass
+              const mergeSpeed = 0.15; // Smooth merge speed
+              cell1.x += (centerX - cell1.x) * mergeSpeed;
+              cell1.y += (centerY - cell1.y) * mergeSpeed;
+              cell2.x += (centerX - cell2.x) * mergeSpeed;
+              cell2.y += (centerY - cell2.y) * mergeSpeed;
+
+              // When cells are very close, merge them
+              if (dist < (cell1.radius + cell2.radius) * 0.1) {
+                // Merge into the larger cell
+                const largerCell = cell1.radius >= cell2.radius ? cell1 : cell2;
+                const smallerCell = cell1.radius >= cell2.radius ? cell2 : cell1;
+
+                // Combine mass (preserve area)
+                largerCell.radius = Math.sqrt(cell1.radius ** 2 + cell2.radius ** 2);
+                largerCell.x = centerX;
+                largerCell.y = centerY;
+                largerCell.splitTime = 0; // Reset split time for merged cell
+
+                // Mark smaller cell for removal
+                cellsToRemove.add(smallerCell.id);
+              }
+            }
+          }
+        }
+      }
+
+      // Remove merged cells
+      if (cellsToRemove.size > 0) {
+        playerCells.current = playerCells.current.filter(cell => !cellsToRemove.has(cell.id));
+      }
+    };
+
     const gameLoop = () => {
       if (!gameStarted) return;
 
@@ -405,6 +476,7 @@ export const GameCanvas = ({ sessionId, playerId, sessionCode, onPlayAgain, sele
       });
 
       checkCollisions();
+      mergeCells();
 
       if (playerCells.current.length > 0) {
         const avgX = playerCells.current.reduce((sum, c) => sum + c.x, 0) / playerCells.current.length;
